@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# this script is required because B2Bi script returns exit code 2 which is reserved by docker
+# all exit codes different than 0 will be replaced with exit code 1
+
+output=$(${B2BI_INSTALL_DIR}/B2Bi/B2Bi status 2>/dev/null)
+test $? -eq 0 || exit 1
+if echo "$output" | grep -q "status\s*is\s*:\s*partially\s*running"; then exit 1 ; fi
+if echo "$output" | grep -q ":\s*[sS]tarting"; then exit 1 ; fi

@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+
+exedir=$(readlink -f $(dirname $0))
+scriptName=$(basename "$0")
+doInstall=false
+doStart=false
+doWait=false
+installVarFile=${B2BI_INSTALL_DIR}/install/install.varfile
+envVarFile=${B2BI_INSTALL_DIR}/install/b2bi_env.txt
+waitTimeout=0
+waitAddress=
+install4jVarFile=${B2BI_INSTALL_DIR}/.install4j/response.varfile
+debugMode=false
+sslDebug=${SSL_DEBUG}
+BEFORE_CMD=()
+AFTER_CMD=()
+B2BI_NODE_UNIQUE_ID=
+B2BI_NODE_HOSTNAME=
+
+# set -x
+# trap read debug
+
+
+exit_script() {
+    echo "######## >>> STOPING B2BI <<< ########"
+    echo "SIGNAL RECEIVED: $1"
+    ${B2BI_INSTALL_DIR}/B2Bi.sh stop
+    exit 0
+}
+
+trap 'exit_script SIGTERM'  SIGTERM
+trap 'exit_script SIGINT'  SIGINT
+trap 'exit_script SIGQUIT'  SIGQUIT
+
+function diff(){
+    awk 'BEGIN{RS=ORS=" "}
+        {NR==FNR?a[$0]++:a[$0]--}
+        END{for(k in a)if(a[k])print k}' <(echo -n "${!1}") <(echo -n "${!2}")
+}
+
+function b2bi2DockerLogs(){
+    local dirs=()
+    local patterns=()
+    local logfile
+    local patternCmd=()
+    declare -A patternsWithLabels=()
+    
+    args=$(getopt \
+        -o f:p:d: --long 'logfilestore,pattern-with-label,directory' \
+        --name "$(basename "$0")" \
+        -- "$@"
+    )
+    eval set --$args
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f|--logstore)
+                logstore="$2"
+                shift 2
+                ;;
+            -p|--pattern-with-label)
+                patterns+=("$2")
+                shift 2
+                ;;
+            -d|--directory)
+                dirs+=("$2")
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    for i in "${patterns[@]}"
+    do
+        IFS='#' read -r -a parts <<< "$i"
+        IFS='#' read -r -a lastPatternArgParts <<< "${patterns[-1]}"
+
+        if [[ "${lastPatternArgParts[0]}" == "${parts[0]}" ]];then
+            patternCmd+=( '-regex' "${parts[0]}" )
+        else
+            patternCmd+=( '-regex' "${parts[0]}" '-o')
+        fi
+        patternsWithLabels["${parts[0]}"]="${parts[1]}"
+    done
+
+    cat /dev/null > "$logstore"
+
+    while [ true ]; do
+        sleep 2
+        ALL_LOGS_LIST=()
+        PROCESSED_LOGS_LIST=()
+        EXISTING_DIRS=()
+        for dirToCheck in "${dirs[@]}"; do
+            test -d "$dirToCheck" && EXISTING_DIRS+=("$dirToCheck")
+        done
+        while IFS= read -r logfile || [[ -n "$logfile" ]]; do
+            test -f "$logfile" && ALL_LOGS_LIST+=("$logfile")
+            #echo "ALL_LOGS_LIST: --------------------${logfile}-----------------------"
+        done < <(find "${EXISTING_DIRS[@]}" -type f \( "${patternCmd[@]}" \))
+
+        if test -f "$logstore"; then
+            while IFS= read -r redirectedLog || [[ -n "$redirectedLog" ]]; do
+                redirectedLogFile=$(echo $redirectedLog | awk -F' -> ' '{print $1}' | tr -d '\n')
+                PROCESSED_LOGS_LIST+=("${redirectedLogFile}")
+                #echo "PROCESSED_LOGS_LIST:--------------------${redirectedLogFile}-----------------------"
+            done < "$logstore"
+        fi
+
+        UNPROCESSED_LOGS=()
+        for i in "${ALL_LOGS_LIST[@]}"; do
+            skip=
+            for j in "${PROCESSED_LOGS_LIST[@]}"; do
+                [[ $i == $j ]] && { skip=1; break; }
+            done
+            [[ -n $skip ]] || UNPROCESSED_LOGS+=("$i")
+        done
+        if (( ${#UNPROCESSED_LOGS[@]} )); then
+            for i in "${UNPROCESSED_LOGS[@]}"
+            do
+                #echo "UNPROCESSED_LOGS:--------------------${i}-----------------------"
+                for K in "${!patternsWithLabels[@]}"; do
+                    if echo $i | grep -q -E $K; then
+                        loggingLabel="${patternsWithLabels[${K}]}"
+                        #if -p args are passed as -p '<regex_expression>:@filename', the matching file name will be used as label
+                        #else
+                        #if -p args are passed as -p '<regex_expression>:<label>', <label> will be used as label
+                        if echo "$loggingLabel" | grep -q "@filename" ;then
+                            filename=$(basename "$i")
+                            loggingLabel=$(echo "$loggingLabel" | sed "s/@filename/$filename/g")
+                        fi
+                        log info "Redirecting $i to stdout. Matching label will be [${loggingLabel}]"
+                        echo "$i -> [${loggingLabel}]" >> "$logstore"
+                        tail -f -n +1 "$i" 2>&1 | while read line || [[ -n "$line" ]]; do echo "[${loggingLabel}] $line"; done &
+                    fi
+                done
+            done
+        fi
+    done
+}
+
+log(){
+    now=`date +"%Y-%m-%d %H-%M-%S,%3N"`
+    case "$1" in
+        error)
+            echo -e "$now - ERROR  [$scriptName] - $2" 
+            ;;
+        warning)
+            echo -e "$now - WARNING  [$scriptName] - $2" 
+            ;;
+        info)
+            echo -e "$now - INFO  [$scriptName] - $2" 
+            ;;
+        debug)
+            echo -e "$now - DEBUG [$scriptName] - $2" 
+            ;;
+        waiting)
+            echo -e "$now - INFO  [$scriptName] (wait-for-it) - $2" 
+            ;;
+        i4j)
+            B2BI_I4J_INFO_MSG=(
+                "Unpacking JRE" 
+                "Starting Installer"
+                "Creating default" 
+                "Finishing installation"
+                "Default unique identifier"
+                "The installation directory"
+                "Extracting files"
+            )
+            while read line; do 
+                now=`date +"%Y-%m-%d %H-%M-%S,%3N"`
+                if [ "$i4jError" == "true" ];then
+                    echo "$now - ERROR  [entrypoint] (install4j) - $line" && continue 
+                elif echo $line | grep -q -i 'error\|exception\|fatal';then 
+                    i4jError=true
+                    echo "$now - ERROR  [entrypoint] (install4j) - $line" && continue 
+                fi
+                    for j in "${B2BI_I4J_INFO_MSG[@]}";do
+                        if echo $line | grep -q "$j";then
+                            echo "$now - INFO  [entrypoint] (install4j) - $line" && continue 2 
+                        fi
+                    done
+                    echo "$now - WARNING  [entrypoint] (install4j) - $line" 
+            done
+            ;;
+        b2bi)
+            while read line; do 
+                now=`date +"%Y-%m-%d %H-%M-%S,%3N"` 
+                echo "$now - INFO  [entrypoint] (B2Bi) - $line"
+            done
+            ;;
+    esac
+}
+
+env_usage() {
+    envPrettyPrint=$(sed  's/\$/:/g' $envVarFile | awk -F ':' '{printf "%-37s|%-15s|%-22s|%-30s|%-20s\n",$1,$2,$3,$4,$5}'| sed -e "2i`printf %115s |tr " " "-"`")
+    log `echo ${1:-error}` "The following env variables are available to configure b2bi inside docker:\n\n$envPrettyPrint\n\n"
+    log `echo ${1:-error}` "In order to encode the clear text password, run the following command:\n\ndocker run <b2bi_docker_image_name> -e <clear_text_password>\n
+    For more detailed information about each of them please access the official documentation found at https://docs.axway.com and search for \"B2BI\" Silent mode installation\n"
+}
+
+usage() {
+    log `echo ${1:-error}` "Usage: docker run -it <b2bi-docker-image-name> <options>"
+    echo "   
+  Options :
+    -h|--help                         Entrypoint usage help.
+    -v|--version                      Print B2Bi components version & build number
+    -i|--install                      Will install B2Bi default configuration based on provided environment variables.
+    -s|--start                        Will start B2Bi server using B2Bi start script.
+    -e|--encode [PASSWORD]            Will encode a clear text password.
+    -w|--wait-for-it [HOST]:[PORT]    Will wait for a specific <host:port> before configuring and starting B2Bi server.
+    -t|--timeout  [TIMEOUT]           Timeout in seconds to wait for <host:port>.
+    -D|--dockerfile                   Print used Dockerfile
+    -E|--envhelp                      Environment variables documentation
+    -c|--before  [COMMAND]            Used to execute a custom command provided as string before b2bi configuration and/or startup. Can be useful when extending this image                                 
+    -d|--debug                        Run entrypoint in debug mode. Even if b2bi install/start will fail or be stopped the container stays up and running.
+    -C|--after [COMMAND]              Used to execute a custom command provided as string after b2bi configuration and/or startup. Can be useful when extending this image                                 
+    -T|--fail-timeout NUMBER[SUFFIX]  Time to keep the container up if b2bi installation/startup fails. [SUFFIX] can be s for seconds (the default), m for minutes, h for hours, d for days.
+    "
+    log `echo ${1:-error}` "If no arguments are provided, the docker image will run with default arguments specified in Dockerfile: -i, -s."
+    log `echo ${1:-error}` "Docker WORKDIR is set to: ${WORKDIR}"
+    exit 1
+}
+
+install() {
+    #delete old log file
+    rm -f "${B2BI_INSTALL_DIR}/.install4j/installation.log"
+    START=$SECONDS
+    ${B2BI_INSTALLER} -q -varfile ${installVarFile} | log i4j   
+    END=$SECONDS
+    DIFF=$(( $END - $START  ))
+    log info "B2Bi configuration finished in $DIFF seconds." 
+}
+
+startB2biServer() {
+    if [ -f "${install4jVarFile}" ] && [ $(cat "${install4jVarFile}" | grep "InstallationStatus" | cut -d = -f2 | grep -i "complete") ];then
+        log info "Starting B2Bi server using ${B2BI_INSTALL_DIR}/B2Bi/B2Bi"
+        if [[ "${sslDebug}" = true ]];then
+            log info "Setting SSL on debug for B2Bi by adding this line <Option>Djavax.net.debug=ssl:handshake</Option> in jvmArguments.xml"
+            sed -i "s/<NodeType>/<NodeType> <Option>Djavax.net.debug=ssl:handshake<\/Option>/" ${B2BI_INSTALL_DIR}/Interchange/conf/jvmArguments.xml
+        fi
+        ${B2BI_INSTALL_DIR}/B2Bi.sh start | log b2bi
+    else
+        log error "Something went wrong while installing.."
+        usage
+    fi
+}
+
+generateInstallVarfile() {
+    # Cleaning install varfile
+    echo "sys.installationDir=${B2BI_INSTALL_DIR}" > ${installVarFile}
+
+    if [ -n "${EnableMultiCluster}" ];then
+        if [ -n "${MULTICLUSTER}" ] && [ "${MULTICLUSTER}" != "PROCESSING" ] && [ "${MULTICLUSTER}" != "CONFIGURATION" ];then
+            log error "MULTICLUSTER env variable can be only PROCESSING or CONFIGURATION"
+            env_usage
+            exit 1
+        elif [ "$MULTICLUSTER" == "PROCESSING" ] && [ -n "$MULTICLUSTER_INITIAL_DATA_SOURCE" ];then
+            log error "MULTICLUSTER_INITIAL_DATA_SOURCE env variable should be used only for MULTICLUSTER=CONFIGURATION"
+            exit 1
+        else
+            echo "MULTICLUSTER=${MULTICLUSTER}" >> ${installVarFile}
+        fi
+    fi
+
+    if [ -z "${InterchangeLicenseFile}" ];then
+        log error "Missing interchnage license destination."
+        log error "Please set InterchangeLicenseFile environment variable with the absolute path destination for interchange license file\n"
+        env_usage
+        exit 1
+    else
+        echo "InterchangeLicenseFile=${InterchangeLicenseFile}" >> ${installVarFile}
+    fi
+
+    if [ -z "${B2BiSharedDirectory}" ];then
+        log error "Missing shared directory location."
+        log error "Please set B2BiSharedDirectory environment variable with the absolute path destination for b2bi shared directory\n"
+        env_usage
+        exit 1
+    else
+        echo "B2BiSharedDirectory=${B2BiSharedDirectory}" >> ${installVarFile}
+    fi
+
+    if [[ -z "${InterchangeDatabaseType}" || -z "$InterchangeDBName" || -z "${InterchangeDBPassword}" || -z "$InterchangeDBUserName" || -z "$InterchangeDBServerName" || -z "${InterchangeDBPort}" || -z "${InterchangeDBVerify}" ]];then
+        log error "Missing one or more environment variables used to configure interchange database."
+
+        log error "In order to configure the interchange dabase for this docker container, please set the following env variables:
+        InterchangeDatabaseType - can be set to one of the following values: 0 for mysql, 1 for oracle, 2 for mssql, 3 for db2
+        InterchangeDBName - used to store interchange database name
+        InterchangeDBPassword.encoded - used to store interchange database password which should be encoded.
+        In order to encode the clear text password, run the following command:
+        docker run <b2bi_docker_image_name> -e <clear_text_password>
+        InterchangeDBUserName - used to store database username
+        InterchangeDBServerName - used to store database server
+        InterchangeDBPort - used to store database port
+        InterchangeDBVerify - used to verify database connection during default configuration. Can be true or false.
+        "
+        log info "Already set interchange database env variables:
+
+        `env | grep InterchangeD*`
+        "
+        env_usage
+        exit 1
+    else
+        case "${InterchangeDatabaseType}" in
+            0)
+                echo "InterchangeDatabaseType\$Integer=0" >> ${installVarFile}
+                ;;
+            1)
+                echo "InterchangeDatabaseType\$Integer=1" >> ${installVarFile}
+                ;;
+            2)
+                echo "InterchangeDatabaseType\$Integer=2" >> ${installVarFile}
+                ;;
+            3)
+                echo "InterchangeDatabaseType\$Integer=3" >> ${installVarFile}
+                ;;
+            4)
+                echo "InterchangeDatabaseType\$Integer=4" >> ${installVarFile}
+                ;;
+            *)
+                log warning "InterchangeDatabaseType can have only the following values: 0 for mysql, 1 for oracle, 2 for mssql, 3 for db2, 4 for postgresql. Please set it accordingly."
+                env_usage
+                exit 1
+                ;;
+        esac
+        echo "InterchangeDBName=${InterchangeDBName}" >> ${installVarFile}
+        echo "InterchangeDBServerName=${InterchangeDBServerName}" >> ${installVarFile}
+        echo "InterchangeDBUserName=${InterchangeDBUserName}" >> ${installVarFile}
+        echo "InterchangeDBPort\$Long=${InterchangeDBPort}" >> ${installVarFile}
+        echo "InterchangeDBPassword.encoded=${InterchangeDBPassword}" >> ${installVarFile}
+        echo "InterchangeDBPasswordConfirm.encoded=${InterchangeDBPassword}" >> ${installVarFile}
+        echo "InterchangeDBVerify\$Boolean=${InterchangeDBVerify}" >> ${installVarFile}
+
+    fi
+
+    sed 1d "${B2BI_INSTALL_DIR}/install/b2bi_env.txt" | while IFS=':' read -r key status dependency defaultValue
+    do
+        envType=`echo $key | cut -d"\$" -f2`
+        key=`echo $key | cut -d"\$" -f1`
+        value=`env | grep "${key}=" | cut -d = -f2-`
+        oldKeyName=$key
+
+        if [[ ${dependency} != "none"* ]];then
+            dependencyValue="${!dependency}"
+            if [[ -z "${dependencyValue}" ]] && [[ -n "${value}" ]];then
+                log error "$key env variable is dependent on $dependency. Please set it first."
+                env_usage
+                exit 1
+            fi
+        fi
+
+        if [[ -n "$value" ]] && echo "$envType"|grep -iq "boolean" && [[ "$value" != "true" ]] && [[ "$value" != "false" ]]
+        then
+            log error "$key environment variable is of type Boolean. Can have only true or false values"
+            env_usage
+            exit 1
+        fi
+
+        if [[ $(cat $envVarFile | grep "^$key" | grep -E "Boolean|Integer|Long" | cut -d : -f 1) ]]; then
+            oldKeyName=$key
+            key=`cat $envVarFile | grep "^$key" | grep -E "Boolean|Integer|Long" | cut -d : -f 1`
+        fi
+
+        case "$status" in
+            "optional"*)
+                if [ -n "${value}" ] && ! cat "$installVarFile" | grep -q "$key";then 
+                    echo "$status" | grep -q "encoded" && \
+                        echo "${key}.encoded=$value" >> ${installVarFile} || \
+                        echo "$key=$value" >> ${installVarFile}
+                        continue
+                fi
+                ;;
+            "required"*)
+                if [[ "${dependency}" != "none"* ]] && [ -n "$dependencyValue" ] && [ -z "${value}" ];then
+                    log error "$oldKeyName environment variable is required because $dependency environment variable was set"
+                    env_usage
+                    exit 1
+                elif [ -z "${value}" ] && [[ "${dependency}" == "none"* ]] ;then
+                    log error "$oldKeyName environment variables is required. Please set it first and retry"
+                    env_usage
+                    exit 1
+                elif [ -n "${value}" ] && ! cat "$installVarFile" | grep -q "$key";then 
+                    echo "$status" | grep -q "encoded" && \
+                        echo "${key}.encoded=$value" >> ${installVarFile} || \
+                        echo "$key=$value" >> ${installVarFile}
+                        continue
+                fi
+                ;;
+        esac
+
+    done
+}
+
+function getB2BiComponentsPid 
+{
+    B2BI_NODE_UNIQUE_ID=$(cat "${install4jVarFile}" | grep "B2BiNodeUniqueId" | cut -d = -f2)
+    B2BI_NODE_HOSTNAME=$(cat /proc/sys/kernel/hostname)
+    if test -z "$B2BI_NODE_UNIQUE_ID";then
+        log error "No B2BiNodeUniqueId property found in ${install4jVarFile} response varfile"
+        return 1 
+    fi
+    if test ! -f "${B2BI_INSTALL_DIR}/Interchange/logs/${B2BI_NODE_UNIQUE_ID}_server.pid" -o \
+            ! -f "${B2BI_INSTALL_DIR}/Integrator/data/pid/${B2BI_NODE_HOSTNAME}" ;then
+        return 1
+    fi
+    return 0
+}
+
+opts=$(getopt \
+    -o ihsw:t:e:Ddc:C:ET: \
+    --long 'install,help,start,wait-for-it:,timeout:,encode:,dockerfile,debug,before:,after:,envhelp,fail-timeout:' \
+    --name "$(basename "$0")" \
+    -- "$@"
+)
+
+eval set --$opts
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -T|--fail-timeout)
+            FAIL_TIMEOUT=$2
+            shift 2
+            ;;
+        -i|--install)
+            doInstall=true
+            shift 1
+            ;;
+        -h|--help)
+            usage info
+            exit 1
+            ;;
+        -E|--envhelp)
+            env_usage info
+            exit 1
+            ;;
+        -s|--start)
+            doStart=true
+            shift 1
+            ;;
+        -t|--timeout)
+            waitTimeout="$2"
+            shift 2
+            ;;
+        -w|--wait-for-it)
+            waitAddress=$2
+            doWait=true
+            doInstall=true
+            doStart=true
+            shift 2
+            ;;
+        -e|--encode)
+            log info "Encoding $2 ..."
+            ${B2BI_INSTALLER} -q -VEncodedPassword=$2 > /dev/null
+            encodedPassword=`cat /tmp/EncodedPassword.txt | grep "EncodedPassword.encoded" | cut -d = -f2-`
+            log info "Encoded value for $2 is $encodedPassword"
+            exit 1
+            ;;
+        -D|--dockerfile)
+            cat ${B2BI_INSTALL_DIR}/install/Dockerfile
+            exit 1
+            ;;
+        -d|--debug)
+            doInstall=true
+            doStart=true
+            debugMode=true
+            shift 1
+            ;;
+        -c|--before)
+            doInstall=true
+            doStart=true
+            BEFORE_CMD+=("$2")
+            shift 2
+            ;;
+        -C|--after)
+            doInstall=true
+            doStart=true
+            AFTER_CMD+=("$2")
+            shift 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [ -f "${install4jVarFile}" ] && [ $(cat "${install4jVarFile}" | grep -i "InstallationStatus" | cut -d = -f2 | grep -i "complete") ];then
+    doInstall=false
+else
+    generateInstallVarfile
+fi
+
+if [[ "${doWait}" = true ]];then
+    [[ "$waitTimeout" == "0" ]] && log waiting "Waiting for $waitAddress without a timeout" \
+        || log waiting "Waiting $waitTimeout seconds for $waitAddress"
+    START=$SECONDS
+    wait-for-it ${waitAddress} -t ${waitTimeout} -q || log waiting "Timeout occurred after waiting $waitTimeout seconds for $waitAddress"    
+    END=$SECONDS
+    DIFF=$(( $END - $START  ))
+    if [ "$waitTimeout" -eq "0" ];then 
+        log waiting "$waitAddress is available after $DIFF seconds"
+    elif [ "$DIFF" -lt "$waitTimeout" ];then
+        log waiting "$waitAddress is available after $DIFF seconds" 
+    fi
+fi
+
+
+if ! [[ "${#BEFORE_CMD[@]}" -eq 0 || -z "$BEFORE_CMD" ]];then
+    for i in "${BEFORE_CMD[@]}"
+    do
+        /bin/bash -c "$i"
+    done
+fi
+
+if test -f "${B2BI_INSTALL_DIR}/redirected_logs.txt"; then
+    while IFS= read -r existingLogfile || [[ -n "$existingLogfile" ]]; do
+        cat /dev/null > existingLogfileq
+    done < "${B2BI_INSTALL_DIR}/redirected_logs.txt" 
+fi
+
+b2bi2DockerLogs -f "${B2BI_INSTALL_DIR}/redirected_logs.txt" \
+    -d ${B2BI_INSTALL_DIR}/Interchange/logs -d ${B2BI_INSTALL_DIR}/.install4j \
+    -d ${B2BI_INSTALL_DIR}/Integrator/data/log -d ${B2BI_INSTALL_DIR}/Integrator/data/trace -d ${B2BI_INSTALL_DIR}/Integrator/install/log \
+    -p '.*Interchange/logs/[^/]+\.log#INTERCHANGE:@filename' -p '.*\.install4j/installation\.log#I4J:installation.log' \
+    -p '.*Integrator/data/log/.*\.log.*#INTEGRATOR:@filename' -p '.*Integrator/data/trace/8/t.*#INTEGRATOR:trace:8:@filename' \
+    -p '.*Integrator/data/trace/9/t.*#INTEGRATOR:trace:9:@filename' -p '.*Integrator/install/log/.*\.log#INTEGRATOR:install.log' \
+    -p '.*Integrator/data/log/.*\.err.*#INTEGRATOR:@filename' -p '.*Interchange/logs/install/.*\.log#INTERCHANGE:install:@filename' &
+
+_logsWatchPid=$!
+
+
+if [[ "${doInstall}" = true ]];then
+    install
+fi
+
+if [[ "${doStart}" = true ]];then
+    startB2biServer
+fi
+
+if ! [[ "${#AFTER_CMD[@]}" -eq 0 || -z "$AFTER_CMD" ]];then
+    for i in "${AFTER_CMD[@]}"
+    do
+        /bin/bash -c "$i"
+    done
+fi
+
+waitSeconds=120
+until test $((waitSeconds--)) -eq 0 ; do 
+    sleep 1
+    getB2BiComponentsPid
+    test $? -eq 0 && break
+done
+
+[ $waitSeconds -le 0 ] && FOUND_PIDS_SUCCESS=false || FOUND_PIDS_SUCCESS=true 
+
+
+if [[ "${debugMode}" = true ]];then
+    wait $_logsWatchPid
+elif [[ "${FOUND_PIDS_SUCCESS}" = true ]];then
+    B2BI_INTERCHANGE_PID=$(cat ${B2BI_INSTALL_DIR}/Interchange/logs/${B2BI_NODE_UNIQUE_ID}_server.pid)
+    B2BI_INTEGRATOR_PID=$(cat ${B2BI_INSTALL_DIR}/Integrator/data/pid/${B2BI_NODE_HOSTNAME})
+    log info "Found node unique id: $B2BI_NODE_UNIQUE_ID"
+    log info "Getting Interchange and Integrator pids"
+    log info "Found Interchange pid: ${B2BI_INTERCHANGE_PID}"
+    log info "Found Integrator pid: ${B2BI_INTEGRATOR_PID}"
+    if test ! -z "$B2BI_INTERCHANGE_PID" ;then
+        while [ -e /proc/$B2BI_INTERCHANGE_PID ]; do sleep 1; done
+        log info "Interchange component pid terminated"
+    else
+        log warning "Interchange component pid not found"
+    fi
+    if test ! -z "$B2BI_INTEGRATOR_PID" ;then
+        while [ -e /proc/$B2BI_INTEGRATOR_PID ]; do sleep 1; done
+        log info "Integrator component pid terminated"
+    else
+        log warning "Integrator component pid not found"
+    fi
+fi 
+
+if [ ! -z "$FAIL_TIMEOUT" ];then
+    log warning "B2BI installation/startup failed or not triggered. Waiting $FAIL_TIMEOUT before stopping container"
+    sleep $FAIL_TIMEOUT
+    exit 1
+fi

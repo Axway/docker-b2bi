@@ -1,0 +1,119 @@
+version: '3.7'
+services:
+  mysql:
+    restart: always
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: 'root'
+      MYSQL_DATABASE: 'b2bi'
+    command: --default-authentication-plugin=mysql_native_password
+    expose:
+      - '3306'
+    volumes:
+      - './cnf:/etc/mysql/conf.d/:ro'
+
+  b2biserver1:
+    image: b2bserver:latest
+    build:
+      context: ../
+      dockerfile: ./Dockerfile
+    hostname: b2biserver1
+    command: -w mysql:3306
+    environment:
+      InterchangeLicenseFile: /axway/license/license.xml
+      B2BiSharedDirectory: /axway/shared
+      InterchangeDatabaseType: 0
+      InterchangeDBName: b2bi
+      InterchangeDBServerName: mysql
+      InterchangeDBUserName: root
+      InterchangeDBPort: 3306
+      InterchangeDBPassword: jZCQiw\=\=
+      InterchangeDBVerify: 'true'
+      # EnableOnlineArchive: 'false'
+    volumes:
+      - ./shared:/axway/shared
+      - ./license:/axway/license
+      - /dev/urandom:/dev/urandom #used for higher level of entropy needed for FIPS
+    ports:
+      - "6443:6443" #needed for UI accessibility - https
+      - "6080:6080" #needed for UI accessibility - http
+      - "6070:6070" #default port for the internal Interchange server that receives messages from Integrator
+      - "6643:6643" #needed for SSO with SAML
+      - "6843:6843" #needed for SSO with OpenID connect
+      - "8443:8443" #needed for B2Bi APIv2
+      - "8832-8833:8832-8833" #IntegratorStarters 
+      - "8834:8834" #Integratorcfgserver 
+      - "8835:8835" #Integratortracer 
+      - "8836:8836" #Integratortraceint
+      - "8837:8837" #Integratorsysman
+      - "8838-8840:8838-8840" #Integratorsysmanpool1
+      - "8841:8841" #Integratorporter
+      - "8842:8842" #Integratormdimporter
+      - "8843:8843" #Integratorcopilot
+      - "8844:8844" #Integratorbroadcastagent
+      - "8845:8845" #Integratormdimporter2
+      - "8846:8846" #Integratordmsimulator
+      - "8847:8847" #Integratorcsrestservice
+      - "8848:8848" #Integratorcsclusterservice
+      - "8849:8849" #Integratorcsinternalcomm
+      - "8850:8850" #Integratorcsbackupservice
+      - "8851:8851" #Integratorjqueue
+      - "8852:8852" #Integratorb2bxserver
+      - "8853:8853" #Integratorb2bxgi
+      - "8854:8854" #Integratorb2bimfpserver
+      - "8855:8855" #Integratorb2bitimersingleton 
+      - "8856:8856" #Integratorb2bitimersingleton_int
+      - "8857:8857" #Integratorb2bitimersingleton_2
+      - "8858:8858" #Integratorb2bitimersingleton_2_int
+      - "8859:8859" #Integratorb2bitablesingleton
+      - "8860:8860" #Integratorb2bitablesingleton_2
+      - "8861:8861" #Integratorb2bifilersingleton
+      - "8862:8862" #Integratorb2bifilersingleton_2
+      - "8863:8863" #Integratorb2bidmsystemsimulator
+      - "8864:8864" #Integratorb2biremotecompiler
+      - "8865:8865" #Integratorb2bidplserver
+      - "8866:8866" #Integratorb2biuniqueidsingleton
+      - "8867:8867" #Integratorb2biwebediserver
+      - "8868:8868" #Integratorb2bimapservice
+      - "8869:8869" #Integratorb2biiscfgserver
+      - "8870-8901:8870-8901" #Integratorb2biloggersingleton_1-32
+      - "8902:8902" #Integratorb2bionlinearchivesingleton
+      - "8903-9202:8903-9202" #Integratorpool1-300
+      - "9203:9203" #Interchangeprocessing
+      - "47001–47556:47001–47556" #ports used by Interchange nodes to communicate in the B2Bi cluster.
+    expose:
+      - '6443'
+      - '8837'
+
+b2biserver2:
+    image: b2bserver:latest
+    build:
+      context: ../
+      dockerfile: ./Dockerfile
+    hostname: b2biserver2
+    command: -w mysql:3306
+    environment:
+      InterchangeLicenseFile: /axway/license/license.xml
+      B2BiSharedDirectory: /axway/shared
+      InterchangeDatabaseType: 0
+      InterchangeDBName: b2bi
+      InterchangeDBServerName: mysql
+      InterchangeDBUserName: root
+      InterchangeDBPort: 3306
+      InterchangeDBPassword: jZCQiw\=\=
+      InterchangeDBVerify: 'true'
+      # EnableOnlineArchive: 'false'
+    volumes:
+      - ./shared:/axway/shared
+      - ./license:/axway/license
+      - /dev/urandom:/dev/urandom #used for higher level of entropy needed for FIPS
+    ports: #ports for the second node have different externally available ports
+      - "16443:6443" #needed for UI accessibility - https
+      - "16080:6080" #needed for UI accessibility - http
+      - "16070:6070" #default port for the internal Interchange server that receives messages from Integrator
+      - "16643:6643" #needed for SSO with SAML
+      - "16843:6843" #needed for SSO with OpenID connect
+      - "18443:8443" #needed for B2Bi APIv2
+    expose:
+      - '6443'
+      - '8837'
