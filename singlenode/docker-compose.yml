@@ -18,6 +18,8 @@ services:
     build:
       context: ../
       dockerfile: ./Dockerfile
+#      args: # uncomment these two lines in case you want to change the installer package name
+#        installerName : 'B2BiServer_linux-x86-64.sh'  
     hostname: b2biserver1
     command: -w mysql:3306
     environment:
@@ -81,7 +83,7 @@ services:
       - "8902:8902" #Integratorb2bionlinearchivesingleton
       - "8903-9202:8903-9202" #Integratorpool1-300
       - "9203:9203" #Interchangeprocessing
-      - "47001–47556:47001–47556" #ports used by Interchange nodes to communicate in the B2Bi cluster.
+      - "47001-47556:47001-47556" #ports used by Interchange nodes to communicate in the B2Bi cluster.
     expose:
       - '6443'
       - '8837'
