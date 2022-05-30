@@ -11,20 +11,21 @@ IMPORTANT: Containerized deployment is available in preview-only mode, and is no
 This repository contains the following files and folders to be used as templates for the various ways to deploy B2Bi in a container:
 * *cluster* – Use the templates in this folder to run B2Bi in a cluster configuration.
 
-    **Note**: When installing  in a cluster configuration, make sure that the *docker-compose.yml* file specifies different externally available ports for the nodes. For example, if the port for accessing the HTTPS UI for the first node is defined as 6443:6443, the port for accessing the HTTPS UI for the second node must be defined as 16443:6443.
+    **Note**: When installing in a cluster configuration, make sure that the *docker-compose.yml* file specifies different externally available ports for the nodes. For example, if the port for accessing the HTTPS UI for the first node is defined as 6443:6443, the port for accessing the HTTPS UI for the second node must be defined as 16443:6443.
 
 * *singlenode* – Use the templates in this folder to run B2Bi in a single-node configuration.
 * *src* – This folder contains the files used to build the container image.
 * *Dockerfile* – This is the definition file for building the container image.
 
-These templates are only compatible with B2Bi 2.6 UP2021-11 and higher.
+These templates are only compatible with B2Bi 2.6 UP2022-05 and higher.
 
 # Default parameters
 
-This section describes the parameters in the _Dockerfile_ and _docker-compose.yml_ files. Use these parameters to ... The values can be a string, an integer, a boolean, or long.
+This section describes the parameters in the _Dockerfile_ and _docker-compose.yml_ files. The values can be a string, an integer, a boolean, or long.
 
 |**Parameter**|**Value**|**Description**|
 |:---|:---|:---|
+|`ACCEPT_GENERAL_CONDITIONS`|String|Set to **Yes** to accept that the Axway Products and/or Services shall be governed exclusively by the Axway General Terms and Conditions, unless an agreement has been signed with Axway, in which case such agreement shall apply.<br>This parameter is required.<br>**Default value**: Not applicable.<br>**Note**: You have to manually change the value of this parameter in the yml files provided in this repository.|
 |`B2BiSharedDirectory`|String|Specifies the location of the shared directory to store documents and other files.<br>This parameter is required.<br>**Default value**: Not applicable.|
 |`InterchangeLicenseFile`|String|Specifies the location of the B2Bi license file.<br>This parameter is required.<br>**Default value**: Not applicable.|
 |`InterchangeDatabaseType`|Integer|Specifies the database type to use.<br>This parameter is required.<br>**Default value**: Not applicable.|
@@ -86,15 +87,17 @@ This section describes the parameters in the _Dockerfile_ and _docker-compose.ym
 |`KeyStoreLocation`|String|Specifies the location of the TLS KeyStore file.<br>This parameter is optional, and can be set only if `IgniteEnableTLS` is set to `TRUE`.<br>**Default value**: Not applicable.|
 |`KeyStorePassword`|String|Specifies the password for the TLS KeyStore file.<br>This parameter is optional and encoded, and can be set only if `IgniteEnableTLS` is set to `TRUE`.<br>**Default value**: Not applicable.|
 |`KeyStorePasswordConfirm`|String|Confirms the password for the TLS KeyStore file.<br>This parameter is required and encoded, and can be set only if you have provided a value for `KeyStorePassword`.<br>**Default value**: Not applicable.|
-|`EnableUsageMetering`|Boolean|Specifies whether to enable usage tracking for the B2Bi system.<br>This parameter is optional.<br>**Default value**: `FALSE`|
-|`FilebeatRootDir`|String|This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerHostName`|String|Specifies the name of the machine where AMPLIFY Edge Agent is installed.<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerPort`|String|Specifies the AMPLIFY Edge Agent access port on the supporting machine.<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerSSLCA`|String|Specifies the certificate of the issuing certificate authority.<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerSSLCertificate`|String|Specifies the file of the SSL certificate used for the communication between B2Bi and AMPLIFY Edge Agent.<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerSSLKey`|String|Specifies the file of the SSL key used for the communication between B2Bi and AMPLIFY Edge Agent.<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerSSLKeyPassphrase`|String|Specifies the passphrase for the SSL key.<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: Not applicable.|
-|`UsageTrackerSSLVerification`|String|Specifies whether the SSL certificate should be verified (`full`) or not (`none`).<br>This parameter is required, and can be set only if `EnableUsageMetering` is set to `TRUE`.<br>**Default value**: `full`|
+|`EnableUsageMetering`|Boolean|Starting with B2Bi 2.6 UP2022-05, this parameter has been replaced with `EnableUsageTracking`.|
+|`EnableUsageTracking`|Boolean|Specifies whether to enable usage metering for the B2Bi system.<br>This parameter is optional.<br>**Default value**: `FALSE`|
+|`MeteringContractVersion`|Integer|Specifies the type of contract.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: `1`|
+|`MeteringEnvironmentID`|String|Specifies the ID of the environment defined on the Amplify Platform.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: Not applicable.|
+|`EnableAmplifyUpload`|Boolean|Specifies whether to enable the automatic generation and upload of reports to the Amplify Platform.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: `FALSE`|
+|`MeteringServiceAccountConfig`|String|Specifies the path to the JSON file with the service account configuration. This file must be downloaded from the Amplify Platform.<br>This parameter is optional, and can be set only if `EnableAmplifyUpload` is set to `TRUE`.<br>**Default value**: Not applicable.|
+|`MeteringAmplifyKey`|String|Specifies the path to the private key generated by the Amplify Platform.<br>This parameter is optional, and can be set only if `EnableAmplifyUpload` is set to `TRUE`.<br>**Default value**: Not applicable.|
+|`MeteringDBName`|String|Specifies the name of the usage tracking schema for all supported databases, except for Oracle.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: Not applicable.|
+|`MeteringDBUserName`|String|Specifies the user name for the usage tracking schema for Oracle databases.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: Not applicable.|
+|`MeteringDBPassword`|String|Specifies the password for the usage tracking schema for Oracle databases.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: Not applicable.|
+|`MeteringDBPasswordConfirm`|String|Confirms the password for the usage tracking schema for Oracle databases.<br>This parameter is optional, and can be set only if `EnableUsageTracking` is set to `TRUE`.<br>**Default value**: Not applicable.|
 |`UseXFBGateway`|Boolean|Specifies whether to use the XFBGateway connector in Integrator.<br>This parameter is optional.<br>**Default value**: `FALSE`|
 |`XFBGatewayDataExchangeDirPath`|String|Specifies the path to the directories used for data exchange between B2Bi and Gateway.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: Not applicable.|
 |`XFBGatewayGUIPort`|Long|Specifies the Gateway GUI port.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `54845`|
@@ -103,7 +106,7 @@ This section describes the parameters in the _Dockerfile_ and _docker-compose.ym
 |`XFBGatewayPasswordConfirm`|String|Confirms the password that B2Bi uses to connect to Gateway.<br>This parameter is required and encoded, and can be set only if you have provided a value for `XFBGatewayPassword`.<br>**Default value**: Not applicable.|
 |`XFBGatewayProfileName`|String|Specifies the name of the Gateway profile.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `CSTCP`|
 |`XFBGatewayTCPIPPort`|Long|Specifies the TCP/IP port that B2Bi uses to receive files and transfer notifications from Gateway.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `34892`|
-|`XFBGatewayUser`|String| Specifies the user name that B2Bi uses to connect to Gateway.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `admin`|
+|`XFBGatewayUser`|String|Specifies the user name that B2Bi uses to connect to Gateway.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `admin`|
 
 # B2Bi image - usage options
 
@@ -127,7 +130,7 @@ This section describes the advanced capabilities available when running B2Bi ima
 
 # Copyright
 
-Copyright (c) 2021 Axway Software SA and its affiliates. All rights reserved.
+Copyright (c) 2022 Axway Software SA and its affiliates. All rights reserved.
 
 # License
 

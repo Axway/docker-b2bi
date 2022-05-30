@@ -4,6 +4,7 @@ B2BiNodeUniqueIdPrefix$String:optional:none:none
 B2BiSharedDirectory$String:required:none:none
 InterchangeLicenseFile$String:required:none:none
 InterchangeDatabaseType$Integer:required:none:none
+OracleConnectionType$String:optional:none:service_name
 InterchangeDBName$String:required:none:none
 InterchangeDBServerName$String:required:none:none
 InterchangeDBPort$Long:required:none:none
@@ -67,15 +68,17 @@ TrustStorePasswordConfirm$String:required and encoded:TrustStorePassword:none
 KeyStoreLocation$String:optional:IgniteEnableTLS:none
 KeyStorePassword$String:optional and encoded:IgniteEnableTLS:none
 KeyStorePasswordConfirm$String:required and encoded:KeyStorePassword:none
-EnableUsageMetering$Boolean:optional:none:false
-FilebeatRootDir$String:required:EnableUsageMetering:none
-UsageTrackerHostName$String:required:EnableUsageMetering:none
-UsageTrackerPort$String:required:EnableUsageMetering:none
-UsageTrackerSSLCA$String:required:EnableUsageMetering:none
-UsageTrackerSSLCertificate$String:required:EnableUsageMetering:none
-UsageTrackerSSLKey$String:required:EnableUsageMetering:none
-UsageTrackerSSLKeyPassphrase$String:required:EnableUsageMetering:none
-UsageTrackerSSLVerification$String:required:EnableUsageMetering:full
+EnableUsageTracking$Boolean:optional:none:false
+MeteringSubscriptionType$String:optional:EnableUsageTracking:CustomerManaged
+MeteringContractVersion$Integer:optional:EnableUsageTracking:1
+MeteringEnvironmentID$String:optional:EnableUsageTracking:none
+EnableAmplifyUpload$Boolean:optional:EnableUsageTracking:false
+MeteringServiceAccountConfig$String:optional:EnableAmplifyUpload:none
+MeteringAmplifyKey$String:optional:EnableAmplifyUpload:none
+MeteringDBName$String:optional:EnableUsageTracking:none
+MeteringDBUserName$String:optional:EnableUsageTracking:none
+MeteringDBPassword$String:optional:EnableUsageTracking:none
+MeteringDBPasswordConfirm$String:optional:EnableUsageTracking:none
 UseXFBGateway$Boolean:optional:none:false
 XFBGatewayDataExchangeDirPath$String:optional:UseXFBGateway:none
 XFBGatewayGUIPort$Long:optional:UseXFBGateway:54845
@@ -85,3 +88,4 @@ XFBGatewayPasswordConfirm$String:required and encoded:XFBGatewayPassword:none
 XFBGatewayProfileName$String:optional:UseXFBGateway:CSTCP
 XFBGatewayTCPIPPort$Long:optional:UseXFBGateway:34892
 XFBGatewayUser$String:optional:UseXFBGateway:admin
+ACCEPT_GENERAL_CONDITIONS$String:required:none:No

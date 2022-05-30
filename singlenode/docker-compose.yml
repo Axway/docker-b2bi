@@ -23,6 +23,7 @@ services:
     hostname: b2biserver1
     command: -w mysql:3306
     environment:
+      ACCEPT_GENERAL_CONDITIONS: No # Manually change to Yes to ACCEPT_GENERAL_CONDITIONS
       InterchangeLicenseFile: /axway/license/license.xml
       B2BiSharedDirectory: /axway/shared
       InterchangeDatabaseType: 0
