@@ -1,16 +1,17 @@
 version: '3.7'
 services:
-  mysql:
-    restart: always
-    image: mysql:5.7
+  postgres13:
+    image: postgres:13
+    hostname: postgres13
     environment:
-      MYSQL_ROOT_PASSWORD: 'root'
-      MYSQL_DATABASE: 'b2bi'
-    command: --default-authentication-plugin=mysql_native_password
+       LC_COLLATE: 'C.UTF-8'
+       LC_CTYPE: 'C.UTF-8'
+       POSTGRES_PASSWORD: 'b2bi'
+       POSTGRES_DB: 'b2bi'
+       POSTGRES_USER: 'b2bi'
+    command: -c 'shared_buffers=256MB' -c 'max_connections=1400'
     expose:
-      - '3306'
-    volumes:
-      - './cnf:/etc/mysql/conf.d/:ro'
+      - 5432
 
   b2biserver1:
     image: b2bserver:latest
@@ -20,17 +21,17 @@ services:
 #      args: # uncomment these two lines in case you want to change the installer package name
 #        installerName : 'B2BiServer_linux-x86-64.sh'
     hostname: b2biserver1
-    command: -w mysql:3306
+    command: -w postgres13:3306
     environment:
       ACCEPT_GENERAL_CONDITIONS: No # Please manually change to ACCEPT_GENERAL_CONDITIONS
       InterchangeLicenseFile: /axway/license/license.xml
       B2BiSharedDirectory: /axway/shared
-      InterchangeDatabaseType: 0
+      InterchangeDatabaseType: 4
       InterchangeDBName: b2bi
-      InterchangeDBServerName: mysql
-      InterchangeDBUserName: root
-      InterchangeDBPort: 3306
-      InterchangeDBPassword: jZCQiw\=\=
+      InterchangeDBServerName: postgres13
+      InterchangeDBUserName: b2bi
+      InterchangeDBPort: 5432
+      InterchangeDBPassword: nc2dlg\=\=
       InterchangeDBVerify: 'true'
       # EnableOnlineArchive: 'false'
     volumes:
@@ -96,17 +97,17 @@ b2biserver2:
 #      args: # uncomment these two lines in case you want to change the installer package name
 #        installerName : 'B2BiServer_linux-x86-64.sh'
     hostname: b2biserver2
-    command: -w mysql:3306
+    command: -w b2biserver1:6443
     environment:
       ACCEPT_GENERAL_CONDITIONS: No # Manually change to Yes to ACCEPT_GENERAL_CONDITIONS
       InterchangeLicenseFile: /axway/license/license.xml
       B2BiSharedDirectory: /axway/shared
-      InterchangeDatabaseType: 0
+      InterchangeDatabaseType: 4
       InterchangeDBName: b2bi
-      InterchangeDBServerName: mysql
-      InterchangeDBUserName: root
-      InterchangeDBPort: 3306
-      InterchangeDBPassword: jZCQiw\=\=
+      InterchangeDBServerName: postgres13
+      InterchangeDBUserName: b2bi
+      InterchangeDBPort: 5432
+      InterchangeDBPassword: nc2dlg\=\=
       InterchangeDBVerify: 'true'
       # EnableOnlineArchive: 'false'
     volumes:

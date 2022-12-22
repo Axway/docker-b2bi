@@ -107,6 +107,8 @@ This section describes the parameters in the _Dockerfile_ and _docker-compose.ym
 |`XFBGatewayProfileName`|String|Specifies the name of the Gateway profile.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `CSTCP`|
 |`XFBGatewayTCPIPPort`|Long|Specifies the TCP/IP port that B2Bi uses to receive files and transfer notifications from Gateway.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `34892`|
 |`XFBGatewayUser`|String|Specifies the user name that B2Bi uses to connect to Gateway.<br>This parameter is optional, and can be set only if `UseXFBGateway` is set to `TRUE`.<br>**Default value**: `admin`|
+|`MySQLDriverFilePath`|String|Specifies the path that B2Bi uses to enable connection to Mysql Database.<br>This parameter is optional, and can be set only if `InterchangeDatabaseType` is set to `0`.<br>**Default value**: Not applicable.|
+
 
 # B2Bi image - usage options
 

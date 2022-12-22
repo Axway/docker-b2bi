@@ -89,3 +89,4 @@ XFBGatewayProfileName$String:optional:UseXFBGateway:CSTCP
 XFBGatewayTCPIPPort$Long:optional:UseXFBGateway:34892
 XFBGatewayUser$String:optional:UseXFBGateway:admin
 ACCEPT_GENERAL_CONDITIONS$String:required:none:No
+MySQLDriverFilePath$String:optional:none:none
